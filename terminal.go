@@ -29,7 +29,7 @@ type routeSegment struct {
 
 type route struct {
 	segments []routeSegment
-	handler  interface{}
+	handler  any
 }
 
 type Router struct {
@@ -101,7 +101,7 @@ func New(prompt string) (*Terminal, error) {
 	return t, nil
 }
 
-func (t *Terminal) Register(path string, handler interface{}) {
+func (t *Terminal) Register(path string, handler any) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -179,21 +179,21 @@ func splitBySlash(s string) []string {
 	return parts
 }
 
-func (t *Terminal) Print(a ...interface{}) {
+func (t *Terminal) Print(a ...any) {
 	select {
 	case t.output <- fmt.Sprint(a...):
 	case <-t.done:
 	}
 }
 
-func (t *Terminal) Println(a ...interface{}) {
+func (t *Terminal) Println(a ...any) {
 	select {
 	case t.output <- fmt.Sprintln(a...):
 	case <-t.done:
 	}
 }
 
-func (t *Terminal) Printf(format string, a ...interface{}) {
+func (t *Terminal) Printf(format string, a ...any) {
 	select {
 	case t.output <- fmt.Sprintf(format, a...):
 	case <-t.done:
@@ -768,12 +768,12 @@ func (t *Terminal) dispatch(cmd string) bool {
 	return false
 }
 
-func matchRoute(segments []routeSegment, parts []string) ([]interface{}, bool) {
+func matchRoute(segments []routeSegment, parts []string) ([]any, bool) {
 	if len(segments) != len(parts) {
 		return nil, false
 	}
 
-	params := make([]interface{}, 0)
+	params := make([]any, 0)
 
 	for i, seg := range segments {
 		if seg.isParam {
@@ -800,7 +800,7 @@ func matchRoute(segments []routeSegment, parts []string) ([]interface{}, bool) {
 	return params, true
 }
 
-func callHandler(t *Terminal, handler interface{}, params []interface{}) {
+func callHandler(t *Terminal, handler any, params []any) {
 	if handler == nil {
 		return
 	}
