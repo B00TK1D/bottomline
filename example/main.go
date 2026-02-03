@@ -1,9 +1,3 @@
-# bottomline
-Persistent bottom command line golang library for streaming terminal output
-
-Example usage:
-
-```go
 package main
 
 import (
@@ -19,8 +13,27 @@ func main() {
 	}
 	defer term.Close()
 
+	term.Register("help", func(t *bottomline.Terminal) {
+		t.Println("Available commands:")
+		t.Println("  help - Show this help")
+		t.Println("  clear - Clear screen and fix prompt at bottom")
+		t.Println("  quit/exit - Exit the program")
+		t.Println("  echo <message> - Echo a message")
+		t.Println("  read <path> - Read a file")
+		t.Println("  count <number> - Count to a number")
+		t.Println("  set color <color> - Set color (red/green/blue)")
+		t.Println("  set size <size> - Set size (small/medium/large)")
+		t.Println("  set name <name> - Set name")
+	})
+
 	term.Register("clear", func(t *bottomline.Terminal) {
 		t.Clear()
+		t.Println("Terminal cleared - prompt now fixed at bottom")
+	})
+
+	term.Register("quit", func(t *bottomline.Terminal) {
+		t.Println("Goodbye!")
+		t.Exit()
 	})
 
 	term.Register("exit", func(t *bottomline.Terminal) {
@@ -30,6 +43,14 @@ func main() {
 
 	term.Register("echo/:message", func(t *bottomline.Terminal, message string) {
 		t.Printf("Echo: %s\n", message)
+	})
+
+	term.Register("read/:path:path", func(t *bottomline.Terminal, path string) {
+		t.Printf("Reading file: %s\n", path)
+	})
+
+	term.Register("count/:number:int", func(t *bottomline.Terminal, number int) {
+		t.Printf("Counting to %d\n", number)
 	})
 
 	term.Register("set/color/red", func(t *bottomline.Terminal) {
@@ -42,6 +63,10 @@ func main() {
 
 	term.Register("set/color/blue", func(t *bottomline.Terminal) {
 		t.Println("Color set to blue")
+	})
+
+	term.Register("set/name/:name", func(t *bottomline.Terminal, name string) {
+		t.Printf("Name set to: %s\n", name)
 	})
 
 	term.Register("sleep/:seconds:int", func(t *bottomline.Terminal, seconds int) {
@@ -71,4 +96,3 @@ func main() {
 		term.Printf("Unknown command: %s\n", cmd)
 	}
 }
-```
