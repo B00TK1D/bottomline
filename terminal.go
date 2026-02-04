@@ -1,7 +1,9 @@
 package bottomline
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -37,22 +39,22 @@ type Router struct {
 }
 
 type Terminal struct {
-	oldState         *term.State
-	width            int
-	height           int
-	prompt           string
-	input            []rune
-	cursorPos        int
-	history          []string
-	historyPos       int
-	historyBuf       string
-	output           chan string
-	commands         chan string
-	done             chan struct{}
-	wg               sync.WaitGroup
-	mu               sync.Mutex
-	scrollMode       bool
-	router           *Router
+	oldState             *term.State
+	width                int
+	height               int
+	prompt               string
+	input                []rune
+	cursorPos            int
+	history              []string
+	historyPos           int
+	historyBuf           string
+	output               chan string
+	commands             chan string
+	done                 chan struct{}
+	wg                   sync.WaitGroup
+	mu                   sync.Mutex
+	scrollMode           bool
+	router               *Router
 	lastTab              time.Time
 	completionsShown     bool
 	completionsLineAbove bool
@@ -197,6 +199,14 @@ func (t *Terminal) Printf(format string, a ...any) {
 	select {
 	case t.output <- fmt.Sprintf(format, a...):
 	case <-t.done:
+	}
+}
+
+// Stream reads from r until closed (EOF) and prints each line via Println.
+func (t *Terminal) Stream(r io.Reader) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		t.Println(scanner.Text())
 	}
 }
 
