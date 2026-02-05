@@ -255,7 +255,7 @@ func (t *Terminal) InputSelect(prompt string, options []string) string {
 	for i, opt := range options {
 		prompt += fmt.Sprintf("\r\n - %2d: \033[0;37m%s\033[0m", i, opt)
 	}
-	prompt += fmt.Sprintf("\r\nSelect an option (0-%d, default 0): ", len(options)-1)
+	prompt += fmt.Sprintf("\r\nSelect an option (0-%d): ", len(options)-1)
 
 	for {
 		input := t.InputInt(prompt)
