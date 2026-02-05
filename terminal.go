@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -63,6 +64,7 @@ type Terminal struct {
 	inputResult          chan string
 	inputSavedPrompt     string
 	rawInputBuf          []byte
+	inputPromptDrawn     bool // true after first render in input mode (cursor is on last line of prompt)
 }
 
 func New(prompt string) (*Terminal, error) {
@@ -224,7 +226,9 @@ func (t *Terminal) SetPrompt(prompt string) {
 func (t *Terminal) Input(prompt string) string {
 	t.mu.Lock()
 	t.inputMode = true
+	t.inputPromptDrawn = false // first draw: cursor not yet on last line of prompt
 	t.inputSavedPrompt = t.prompt
+	//t.prompt = normalizePrompt(prompt)
 	t.prompt = prompt
 	t.input = make([]rune, 0)
 	t.cursorPos = 0
@@ -234,6 +238,32 @@ func (t *Terminal) Input(prompt string) string {
 	os.Stdout.Sync()
 	t.mu.Unlock()
 	return <-t.inputResult
+}
+
+func (t *Terminal) InputInt(prompt string) int {
+	for {
+		input := t.Input(prompt)
+		value, err := strconv.Atoi(strings.TrimSpace(input))
+		if err == nil {
+			return value
+		}
+		t.Println("Invalid input, must be an integer")
+	}
+}
+
+func (t *Terminal) InputSelect(prompt string, options []string) string {
+	for i, opt := range options {
+		prompt += fmt.Sprintf("\r\n - %2d: \033[0;37m%s\033[0m", i, opt)
+	}
+	prompt += fmt.Sprintf("\r\nSelect an option (0-%d, default 0): ", len(options)-1)
+
+	for {
+		input := t.InputInt(prompt)
+		if input >= 0 && input < len(options) {
+			return options[input]
+		}
+		t.Println("Invalid option, please try again")
+	}
 }
 
 func (t *Terminal) Clear() {
@@ -263,7 +293,7 @@ func (t *Terminal) Close() {
 		fmt.Print("\033[r")
 	}
 	term.Restore(int(os.Stdin.Fd()), t.oldState)
-	fmt.Println()
+	fmt.Print("\n")
 }
 
 func (t *Terminal) readInput() {
@@ -724,9 +754,31 @@ func (t *Terminal) handleEnter() {
 func (t *Terminal) printOutput(data string) {
 	t.clearCompletions(false)
 	if t.inputMode {
-		fmt.Print("\r\033[K")
-		fmt.Print(data)
-		t.renderPrompt()
+		n := t.promptLineCount()
+		if n == 1 {
+			// Single-line prompt: insert a new line above the prompt, print message there, then redraw the prompt.
+			// This keeps "> confirm" and the prompt intact and appends each message (messages grow upward).
+			fmt.Print("\033[1A")  // move up to the line above the prompt (e.g. the "> confirm" line)
+			fmt.Print("\033[L")   // insert one blank line (pushes that line and prompt down; cursor stays on the new line)
+			fmt.Print("\r\033[K") // clear the new line and ensure column 0
+			fmt.Print(data)
+			if !strings.HasSuffix(data, "\n") {
+				fmt.Print("\n")
+			}
+			// Cursor is on the line below the message; move down to the prompt line and redraw.
+			fmt.Print("\033[1B")
+			fmt.Print("\r\033[K")
+			t.renderPromptContent()
+		} else {
+			// Multi-line prompt: clear the prompt block, print output in its place, then redraw prompt below.
+			t.clearPromptBlock()
+			fmt.Print(data)
+			if !strings.HasSuffix(data, "\n") {
+				fmt.Print("\n")
+			}
+			fmt.Print("\r")
+			t.renderPromptContent()
+		}
 	} else if t.scrollMode {
 		fmt.Print("\0337")
 		fmt.Printf("\033[%d;1H", t.height-1)
@@ -980,12 +1032,35 @@ func (t *Terminal) handleOutput() {
 	}
 }
 
-func (t *Terminal) renderPrompt() {
-	if t.scrollMode {
-		fmt.Printf("\033[%d;1H\033[K", t.height)
-	} else {
-		fmt.Print("\r\033[K")
+// promptLineCount returns the number of lines the prompt occupies when displayed.
+func (t *Terminal) promptLineCount() int {
+	return strings.Count(t.prompt, "\n") + 1
+}
+
+// clearPromptBlock assumes the cursor is on the last line of the prompt block. It moves up,
+// clears all prompt lines, and leaves the cursor at the start of the first line.
+func (t *Terminal) clearPromptBlock() {
+	n := t.promptLineCount()
+	if n <= 0 {
+		return
 	}
+	if n > 1 {
+		fmt.Printf("\033[%dA", n-1)
+	}
+	for i := range n {
+		fmt.Print("\r\033[K")
+		if i < n-1 {
+			fmt.Print("\033[1B")
+		}
+	}
+	if n > 1 {
+		fmt.Printf("\033[%dA", n-1)
+	}
+}
+
+// renderPromptContent writes the prompt text, input buffer, suggestion, and cursor positioning.
+// Caller is responsible for positioning the cursor and clearing lines when needed.
+func (t *Terminal) renderPromptContent() {
 	fmt.Print(t.prompt)
 	fmt.Print(string(t.input))
 
@@ -1004,5 +1079,35 @@ func (t *Terminal) renderPrompt() {
 		fmt.Printf("\033[%dD", back)
 	} else if suggestion != "" {
 		fmt.Printf("\033[%dD", len(suggestion))
+	}
+}
+
+func (t *Terminal) renderPrompt() {
+	n := t.promptLineCount()
+	if t.scrollMode {
+		row := t.height - n + 1
+		fmt.Printf("\033[%d;1H", row)
+		for i := range n {
+			fmt.Print("\033[K")
+			if i < n-1 {
+				fmt.Print("\033[1B")
+			}
+		}
+		fmt.Printf("\033[%d;1H", row)
+		t.renderPromptContent()
+		return
+	}
+	// In input mode, first draw: cursor is on line after command, not on last line of prompt.
+	// Only use clearPromptBlock when redrawing (cursor is on last line of prompt).
+	if t.inputMode && !t.inputPromptDrawn {
+		fmt.Print("\r\033[K")
+		t.renderPromptContent()
+		t.inputPromptDrawn = true
+		return
+	}
+	t.clearPromptBlock()
+	t.renderPromptContent()
+	if t.inputMode {
+		t.inputPromptDrawn = true
 	}
 }

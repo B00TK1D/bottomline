@@ -41,8 +41,8 @@ func main() {
 		t.Exit()
 	})
 
-	term.Register("echo/:message", func(t *bottomline.Terminal, message string) {
-		t.Printf("Echo: %s\n", message)
+	term.Register("base/:message", func(t *bottomline.Terminal, message string) {
+		t.SetPrompt(message + " > ")
 	})
 
 	term.Register("read/:path:path", func(t *bottomline.Terminal, path string) {
@@ -79,6 +79,20 @@ func main() {
 		c := t.Input("Please confirm (y/n): ")
 		if c == "y" || c == "Y" {
 			t.Println("Confirmed!")
+		}
+	})
+
+	term.Register("select", func(t *bottomline.Terminal) {
+		options := []string{"Option 1", "Option 2", "Option 3"}
+		choice := t.InputSelect("Please select an option:", options)
+		t.Printf("You selected: %s\n", choice)
+	})
+
+	term.Register("count", func(t *bottomline.Terminal) {
+		number := t.InputInt("Enter a number to count to: ")
+		for i := 1; i <= number; i++ {
+			t.Printf("Count: %d\n", i)
+			time.Sleep(1 * time.Second)
 		}
 	})
 
